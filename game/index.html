@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harborlight — a three.js tactical FPS</title>
+<style>
+  :root {
+    --teal: #2ee6c8; --amber: #ffb02e; --rust: #ff7a52;
+    --panel: rgba(10, 24, 28, 0.72); --ink: #eef7f2;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a181c; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--ink); }
+  #app, #app canvas { width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+
+  /* ---------- HUD chrome ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  .panel { background: var(--panel); border: 1px solid rgba(46, 230, 200, 0.25); border-radius: 8px; backdrop-filter: blur(3px); }
+
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  #crosshair .l { position: absolute; background: var(--teal); box-shadow: 0 0 3px #000; }
+  #crosshair .t { width: 2px; height: 8px; left: -1px; top: calc(-6px - var(--gap, 6px) - 8px + 6px); }
+  #crosshair .b { width: 2px; height: 8px; left: -1px; top: var(--gap, 6px); }
+  #crosshair .lf { height: 2px; width: 8px; top: -1px; left: calc(-6px - var(--gap, 6px) - 8px + 6px); }
+  #crosshair .rt { height: 2px; width: 8px; top: -1px; left: var(--gap, 6px); }
+  #hitmarker { position: absolute; left: 50%; top: 50%; opacity: 0; }
+  #hitmarker span { position: absolute; width: 10px; height: 2px; background: #fff; box-shadow: 0 0 4px #000; }
+  #hitmarker .a { transform: translate(-14px, -8px) rotate(45deg); }
+  #hitmarker .b { transform: translate(4px, -8px) rotate(-45deg); }
+  #hitmarker .c { transform: translate(-14px, 6px) rotate(-45deg); }
+  #hitmarker .d { transform: translate(4px, 6px) rotate(45deg); }
+  #hitmarker.head span { background: var(--amber); }
+
+  #bottomLeft { position: absolute; left: 18px; bottom: 16px; padding: 10px 14px; min-width: 190px; }
+  #hpRow { display: flex; align-items: baseline; gap: 8px; }
+  #hp { font-size: 34px; font-weight: 700; line-height: 1; }
+  #hp.low { color: var(--rust); }
+  #armorVal { font-size: 15px; color: #9fd8ff; }
+  #hpBarWrap { height: 6px; background: rgba(255,255,255,0.14); border-radius: 3px; margin-top: 7px; }
+  #hpBar { height: 100%; width: 100%; background: var(--teal); border-radius: 3px; transition: width 0.15s; }
+  #hpBar.low { background: var(--rust); }
+
+  #bottomRight { position: absolute; right: 18px; bottom: 16px; padding: 10px 14px; text-align: right; min-width: 170px; }
+  #weaponName { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #bfe8dc; }
+  #ammo { font-size: 34px; font-weight: 700; line-height: 1.05; }
+  #ammo .reserve { font-size: 16px; color: #9db8b0; font-weight: 400; }
+  #ammo.low { color: var(--rust); }
+  #money { font-size: 17px; color: var(--amber); font-weight: 600; margin-top: 2px; }
+  #grenades { font-size: 12.5px; color: #bfe8dc; margin-top: 3px; letter-spacing: 0.04em; }
+
+  #topCenter { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 18px; text-align: center; }
+  #timer { font-size: 25px; font-weight: 700; letter-spacing: 0.06em; }
+  #timer.warn { color: var(--rust); }
+  #scoreLine { font-size: 14.5px; margin-top: 1px; }
+  #scoreLine .atk { color: var(--teal); font-weight: 700; }
+  #scoreLine .def { color: var(--rust); font-weight: 700; }
+  #aliveLine { font-size: 12px; color: #bfe8dc; letter-spacing: 0.3em; margin-top: 2px; }
+
+  #minimapWrap { position: absolute; top: 14px; left: 14px; padding: 6px; }
+  #minimap { display: block; width: 196px; height: 160px; }
+
+  #feed { position: absolute; top: 14px; right: 14px; text-align: right; font-size: 13.5px; line-height: 1.5; }
+  #feed .kill { color: #ffd9a0; background: rgba(10, 24, 28, 0.58); border-radius: 4px; padding: 1px 8px; margin-bottom: 3px; }
+  #feed .kill b { color: var(--teal); }
+  #feed .kill i { color: var(--rust); font-style: normal; }
+
+  #banner { position: absolute; top: 24%; left: 0; right: 0; text-align: center; opacity: 0; transition: opacity 0.35s; }
+  #banner.show { opacity: 1; }
+  #bannerTitle { font-size: 44px; font-weight: 800; letter-spacing: 0.12em; text-shadow: 0 3px 14px rgba(0,0,0,0.65); }
+  #bannerTitle.win { color: var(--teal); }
+  #bannerTitle.lose { color: var(--rust); }
+  #bannerTitle.warn { color: var(--amber); }
+  #bannerSub { font-size: 17px; color: #e8f4ee; text-shadow: 0 2px 8px rgba(0,0,0,0.7); margin-top: 4px; }
+
+  #toast { position: absolute; bottom: 19%; left: 0; right: 0; text-align: center; font-size: 16.5px; color: var(--amber); text-shadow: 0 2px 6px #000; opacity: 0; transition: opacity 0.3s; }
+  #toast.show { opacity: 1; }
+
+  #channelWrap { position: absolute; left: 50%; bottom: 26%; transform: translateX(-50%); width: 300px; padding: 8px 12px; text-align: center; }
+  #channelLabel { font-size: 13px; letter-spacing: 0.18em; margin-bottom: 6px; }
+  #channelBarOuter { height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; }
+  #channelBar { height: 100%; width: 0%; background: var(--amber); border-radius: 4px; }
+
+  #objective { position: absolute; top: 108px; left: 50%; transform: translateX(-50%); font-size: 14px; color: #ffe1ae; text-shadow: 0 1px 4px #000; letter-spacing: 0.05em; }
+
+  #dmgVignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 52%, rgba(200, 30, 20, 0.55) 100%); }
+  #dirHit { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: 0; }
+  #dirHitArc { width: 100%; height: 100%; border-radius: 50%;
+    background: conic-gradient(from -40deg, rgba(255,60,40,0.85) 0deg, rgba(255,60,40,0.85) 80deg, transparent 80deg); }
+  #flashOverlay { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #scopeOverlay { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at center, transparent 26%, rgba(0,0,0,0.97) 27%); }
+  #scopeOverlay::before, #scopeOverlay::after { content: ""; position: absolute; background: rgba(0,0,0,0.9); }
+  #scopeOverlay::before { left: 50%; top: 12%; width: 1.5px; height: 76%; }
+  #scopeOverlay::after { top: 50%; left: 12%; height: 1.5px; width: 76%; }
+
+  /* ---------- Buy menu & scoreboard ---------- */
+  #buymenu { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 620px; max-width: 92vw;
+    padding: 18px 20px; pointer-events: none; }
+  #buymenu h2 { font-size: 19px; letter-spacing: 0.16em; margin-bottom: 2px; }
+  #buymenu .sub { font-size: 13px; color: #bfe8dc; margin-bottom: 12px; }
+  .buyGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .buyItem { display: flex; justify-content: space-between; align-items: center; padding: 8px 11px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; font-size: 14.5px; }
+  .buyItem .key { display: inline-block; min-width: 20px; text-align: center; background: rgba(255,255,255,0.16);
+    border-radius: 4px; padding: 1px 5px; margin-right: 8px; font-weight: 700; font-size: 13px; }
+  .buyItem .price { color: var(--amber); font-weight: 600; }
+  .buyItem.owned { border-color: rgba(46,230,200,0.55); }
+  .buyItem.cant { opacity: 0.42; }
+
+  #scoreboard { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 560px; max-width: 92vw; padding: 16px 20px; }
+  #scoreboard h2 { font-size: 17px; letter-spacing: 0.14em; margin-bottom: 10px; text-align: center; }
+  #scoreboard table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  #scoreboard td, #scoreboard th { padding: 4px 8px; text-align: left; }
+  #scoreboard th { color: #9db8b0; font-weight: 600; font-size: 12px; letter-spacing: 0.1em; }
+  #scoreboard tr.dead td { opacity: 0.45; }
+  #scoreboard tr.me td { color: var(--amber); }
+  #scoreboard .teamhead td { padding-top: 10px; font-weight: 700; letter-spacing: 0.08em; }
+
+  /* ---------- Menu / end screens ---------- */
+  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(8, 26, 32, 0.55), rgba(8, 26, 32, 0.88)); pointer-events: auto; }
+  .card { max-width: 640px; width: 92vw; padding: 30px 36px; text-align: center; }
+  .card h1 { font-size: 46px; letter-spacing: 0.22em; font-weight: 800; color: #fff; }
+  .card h1 .light { color: var(--amber); }
+  .card .tag { font-size: 16px; color: #cfe8dd; margin: 6px 0 16px; line-height: 1.45; }
+  .card .cols { display: flex; gap: 18px; text-align: left; font-size: 13.5px; line-height: 1.65; color: #cfe8dd; margin: 0 auto 20px; max-width: 540px; }
+  .card .cols b { color: #fff; }
+  .card button { pointer-events: auto; cursor: pointer; font-size: 18px; font-weight: 700; letter-spacing: 0.1em;
+    color: #06231d; background: var(--teal); border: none; border-radius: 8px; padding: 13px 42px; }
+  .card button:hover { background: #5ff0d4; }
+  .card .fine { margin-top: 14px; font-size: 12px; color: #8fb3a8; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud" class="hidden">
+  <div id="minimapWrap" class="panel"><canvas id="minimap" width="196" height="160"></canvas></div>
+  <div id="topCenter" class="panel">
+    <div id="timer">1:40</div>
+    <div id="scoreLine"><span class="atk">Breakers 0</span> — <span class="def">0 Wardens</span></div>
+    <div id="aliveLine"></div>
+  </div>
+  <div id="objective"></div>
+  <div id="feed"></div>
+  <div id="crosshair"><div class="l t"></div><div class="l b"></div><div class="l lf"></div><div class="l rt"></div></div>
+  <div id="hitmarker"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
+  <div id="dirHit"><div id="dirHitArc"></div></div>
+  <div id="banner"><div id="bannerTitle"></div><div id="bannerSub"></div></div>
+  <div id="toast"></div>
+  <div id="channelWrap" class="panel hidden"><div id="channelLabel">PLANTING</div><div id="channelBarOuter"><div id="channelBar"></div></div></div>
+  <div id="bottomLeft" class="panel">
+    <div id="hpRow"><span id="hp">100</span><span id="armorVal"></span></div>
+    <div id="hpBarWrap"><div id="hpBar"></div></div>
+  </div>
+  <div id="bottomRight" class="panel">
+    <div id="weaponName">Kestrel Pistol</div>
+    <div id="ammo">12 <span class="reserve">/ 96</span></div>
+    <div id="money">$800</div>
+    <div id="grenades"></div>
+  </div>
+</div>
+
+<div id="buymenu" class="panel hidden">
+  <h2>BUY — <span id="buyMoney">$800</span></h2>
+  <div class="sub">First to 5 rounds takes the harbour. You are a <b>Breaker</b>: plant the Charge at A or B, or eliminate the Wardens.</div>
+  <div class="buyGrid" id="buyGrid"></div>
+  <div class="sub" style="margin-top:10px">Press <b>B</b> to close. Purchases are final for the round.</div>
+</div>
+
+<div id="scoreboard" class="panel hidden"><h2>HARBOURLIGHT</h2><div id="sbBody"></div></div>
+
+<div id="dmgVignette"></div>
+<div id="scopeOverlay"></div>
+<div id="flashOverlay"></div>
+
+<div id="menu" class="screen">
+  <div class="card panel">
+    <h1>HARBOUR<span class="light">LIGHT</span></h1>
+    <div class="tag">A round-based tactical FPS in a sunlit port town. The Breakers carry a Charge
+      to the Lighthouse or the Market; the Wardens hold the harbour. First to 5 rounds.</div>
+    <div class="cols">
+      <div>
+        <b>Move</b> — WASD, Shift walk, Ctrl crouch, Space jump<br>
+        <b>Fight</b> — Mouse aim, Click fire, R reload, RMB aim<br>
+        <b>Grenades</b> — G throws (4 or the buy menu picks the type)
+      </div>
+      <div>
+        <b>Buy</b> — B at round start<br>
+        <b>Charge</b> — F plants / takes it from your carrier<br>
+        <b>Board</b> — Tab &nbsp;·&nbsp; <b>Mute</b> — M &nbsp;·&nbsp; <b>Pause</b> — Esc
+      </div>
+    </div>
+    <button id="playBtn">DEPLOY</button>
+    <div class="fine">Accuracy beats speed here: spread blooms as you move, so stop, crouch and aim.
+      Headshots pay. Built with three.js — no downloads, no network, just this page.</div>
+  </div>
+</div>
+
+<div id="endScreen" class="screen hidden">
+  <div class="card panel">
+    <h1 id="endTitle">VICTORY</h1>
+    <div class="tag" id="endSub"></div>
+    <button id="againBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
